@@ -98,8 +98,11 @@ func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	for k, v := range entry.Data {
 		switch v := v.(type) {
 		case error:
-			data.Context["error"] = v.Error()
+			if v == nil {
+				break
+			}
 
+			data.Context["error"] = v.Error()
 			if st := stackTrace(v); len(st) > 0 {
 				if len(st) >= MaxStackTrace {
 					st = st[:MaxStackTrace]
@@ -214,7 +217,6 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 				if len(st) >= MaxStackTrace {
 					st = st[:MaxStackTrace]
 				}
-				fmt.Println(st)
 				data.Error["stackTrace"] = st
 			}
 		}
