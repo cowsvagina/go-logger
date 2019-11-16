@@ -1,4 +1,4 @@
-module gitlab.haochang.tv/gopkg/logger
+module github.com/cowsvagina/go-logger
 
 go 1.12
 
