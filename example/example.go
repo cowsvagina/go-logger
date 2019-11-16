@@ -5,9 +5,9 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/cowsvagina/go-logger"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gitlab.haochang.tv/gopkg/logger"
 )
 
 func main() {
