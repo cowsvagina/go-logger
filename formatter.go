@@ -175,7 +175,6 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Get = logrus.Fields{}
 	data.Post = logrus.Fields{}
 	data.Extra = entry.Data
-	data.Error = logrus.Fields{}
 
 	for k, v := range req.Header {
 		if len(v) > 1 {
@@ -212,12 +211,16 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 	if v, ok := data.Extra[HTTPRequestErrorKey]; ok {
 		if err, ok := v.(error); ok {
-			data.Error["msg"] = err.Error()
+			var trace []string
 			if st := stackTrace(err); len(st) > 0 {
 				if len(st) >= MaxStackTrace {
 					st = st[:MaxStackTrace]
 				}
-				data.Error["stackTrace"] = st
+				trace = st
+			}
+			data.Error = logrus.Fields{
+				"msg":   err.Error(),
+				"trace": trace,
 			}
 		}
 	}
