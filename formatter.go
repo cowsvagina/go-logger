@@ -210,6 +210,7 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	}
 
 	if v, ok := data.Extra[HTTPRequestErrorKey]; ok {
+		delete(data.Extra, HTTPRequestErrorKey)
 		if err, ok := v.(error); ok {
 			var trace []string
 			if st := stackTrace(err); len(st) > 0 {
