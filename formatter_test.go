@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -49,10 +50,10 @@ func TestFormatterOutput(t *testing.T) {
 
 		if v := jsoniter.Get(data, "schema").ToString(); v == "" {
 			t.Fatalf(`Format() output "schema", Expected=%q, Actual=%q`, APPLogsV1, v)
-		} else if v := jsoniter.Get(data, "l").ToString(); v != entry.Level.String() {
-			t.Fatalf(`Format() output "l", Expected=%q, Actual=%q`, entry.Level.String(), v)
-		} else if v := jsoniter.Get(data, "m").ToString(); v != entry.Message {
-			t.Fatalf(`Format() output "m", Expected=%q, Actual=%q`, entry.Message, v)
+		} else if v := jsoniter.Get(data, "level").ToString(); v != entry.Level.String() {
+			t.Fatalf(`Format() output "level", Expected=%q, Actual=%q`, entry.Level.String(), v)
+		} else if v := jsoniter.Get(data, "msg").ToString(); v != entry.Message {
+			t.Fatalf(`Format() output "msg", Expected=%q, Actual=%q`, entry.Message, v)
 		} else if v := jsoniter.Get(data, "ctx", "foo").ToString(); v != "bar" {
 			t.Fatalf(`Format() output "ctx.foo", Expected=%q, Actual=%q`, "bar", v)
 		}
@@ -96,8 +97,9 @@ func TestFormatterOutput(t *testing.T) {
 			PostForm: form,
 		}
 
-		entry.Data["request"] = req
-		entry.Data["user"] = 65535
+		entry.Data[HTTPRequestReqKey] = req
+		entry.Data[HTTPRequestUserKey] = 65535
+		entry.Data[HTTPRequestErrorKey] = errors.New("err")
 		entry.Data["status"] = http.StatusAccepted
 
 		data, err := f.Format(entry)
@@ -126,7 +128,7 @@ func TestFormatterOutput(t *testing.T) {
 				expected: req.URL.Path,
 			},
 			{
-				path:     []interface{}{"user"},
+				path:     []interface{}{HTTPRequestUserKey},
 				expected: "65535",
 			},
 			{
@@ -144,6 +146,10 @@ func TestFormatterOutput(t *testing.T) {
 			{
 				path:     []interface{}{"extra", "status"},
 				expected: fmt.Sprintf("%d", http.StatusAccepted),
+			},
+			{
+				path:     []interface{}{"error", "msg"},
+				expected: fmt.Sprintf("err"),
 			},
 		}
 
