@@ -34,7 +34,7 @@ func appLogsV1Example() {
 	// 	f.TimeLayout = time.RFC3339Nano
 	// }
 
-	// OUTPUT: {"schema":"app.logs.v1","t":"2019-08-12T10:13:48.837899+08:00","l":"debug","c":"TEST","m":"test app.logs.v1 log","ctx":{"foo":"bar","error":"wow","stackTrace":["main.main /Users/yeaha/Repos/gitlab.haochang.tv/gopkg/logger/example/example.go:37","runtime.main /usr/local/opt/go/libexec/src/runtime/proc.go:200","runtime.goexit /usr/local/opt/go/libexec/src/runtime/asm_amd64.s:1337"]}}
+	// OUTPUT: {"schema":"app.logs.v1","t":"2019-08-12T10:13:48.837899+08:00","l":"debug","c":"TEST","m":"test app.logs.v1 log","ctx":{"foo":"bar","error":"wow","stackTrace":["main.main /home/hsldymq/Development/Go/src/github.com/cowsvagina/go-logger/example/example.go:37","runtime.main /usr/local/opt/go/libexec/src/runtime/proc.go:200","runtime.goexit /usr/local/opt/go/libexec/src/runtime/asm_amd64.s:1337"]}}
 	al.WithFields(logrus.Fields{
 		"channel": "TEST",
 		"foo":     "bar",
