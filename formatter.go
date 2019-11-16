@@ -12,6 +12,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	HTTPRequestReqKey   = "request"
+	HTTPRequestUserKey  = "user"
+	HTTPRequestErrorKey = "error"
+)
+
 var (
 	// MaxStackTrace 记录的错误信息的调用栈最大深度
 	MaxStackTrace = 10
@@ -19,7 +25,7 @@ var (
 	_ logrus.Formatter = (*APPLogsV1Formatter)(nil)
 	_ logrus.Formatter = (*HTTPRequestV1Formatter)(nil)
 
-	emptyStack = []string{}
+	emptyStack = make([]string, 0)
 
 	appLogsV1Pool = sync.Pool{
 		New: func() interface{} {
@@ -57,12 +63,12 @@ func NewFormatter(s Standard) (logrus.Formatter, error) {
 // APPLogsV1Data app.logs.v1日志输出内容
 type APPLogsV1Data struct {
 	Schema      string                 `json:"schema"`
-	Time        string                 `json:"t"`
-	Level       string                 `json:"l"`
-	Service     string                 `json:"s,omitempty"`
-	Channel     string                 `json:"c"`
-	Environment string                 `json:"e,omitempty"`
-	Message     string                 `json:"m"`
+	Service     string                 `json:"service,omitempty"`
+	Environment string                 `json:"env,omitempty"`
+	Channel     string                 `json:"channel"`
+	Level       string                 `json:"level"`
+	Time        string                 `json:"time"`
+	Message     string                 `json:"msg"`
 	Context     map[string]interface{} `json:"ctx,omitempty"`
 }
 
@@ -119,7 +125,8 @@ func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 type HTTPRequestV1Data struct {
 	Schema      string            `json:"schema"`
 	Service     string            `json:"service,omitempty"`
-	Environment string            `json:"environment,omitempty"`
+	Environment string            `json:"env,omitempty"`
+	Level       string            `json:"level"`
 	Time        string            `json:"time"`
 	IP          string            `json:"ip"`
 	Method      string            `json:"method"`
@@ -129,6 +136,7 @@ type HTTPRequestV1Data struct {
 	Get         logrus.Fields     `json:"get,omitempty"`
 	Post        logrus.Fields     `json:"post,omitempty"`
 	Extra       logrus.Fields     `json:"extra,omitempty"`
+	Error       logrus.Fields     `json:"error,omitempty"`
 }
 
 // HTTPRequestV1Formatter http.request.v1日志格式化
@@ -141,7 +149,7 @@ type HTTPRequestV1Formatter struct {
 
 // Format implements logrus.Formatter interface
 func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	rv, ok := entry.Data["request"]
+	rv, ok := entry.Data[HTTPRequestReqKey]
 	if !ok {
 		return nil, errors.New(`require "request"`)
 	}
@@ -150,7 +158,7 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	if !ok {
 		return nil, errors.New(`"request" type MUST be *http.Request`)
 	}
-	delete(entry.Data, "request")
+	delete(entry.Data, HTTPRequestReqKey)
 
 	data := httpRequestV1Pool.Get().(*HTTPRequestV1Data)
 	data.Service = hf.Service
@@ -164,6 +172,7 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Get = logrus.Fields{}
 	data.Post = logrus.Fields{}
 	data.Extra = entry.Data
+	data.Error = logrus.Fields{}
 
 	for k, v := range req.Header {
 		if len(v) > 1 {
@@ -193,9 +202,22 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 		}
 	}
 
-	if v, ok := data.Extra["user"]; ok {
+	if v, ok := data.Extra[HTTPRequestUserKey]; ok {
 		data.User = fmt.Sprintf("%v", v)
-		delete(data.Extra, "user")
+		delete(data.Extra, HTTPRequestUserKey)
+	}
+
+	if v, ok := data.Extra[HTTPRequestErrorKey]; ok {
+		if err, ok := v.(error); ok {
+			data.Error["msg"] = err.Error()
+			if st := stackTrace(err); len(st) > 0 {
+				if len(st) >= MaxStackTrace {
+					st = st[:MaxStackTrace]
+				}
+				fmt.Println(st)
+				data.Error["stackTrace"] = st
+			}
+		}
 	}
 
 	output, err := jsoniter.Marshal(data)
