@@ -166,6 +166,7 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data := httpRequestV1Pool.Get().(*HTTPRequestV1Data)
 	data.Service = hf.Service
 	data.Environment = hf.Environment
+	data.Level = entry.Level.String()
 	data.Time = entry.Time.Format(hf.TimeLayout)
 	data.IP = strings.Split(req.RemoteAddr, ":")[0]
 	data.Method = req.Method
