@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,8 @@ const (
 	HTTPRequestReqKey   = "request"
 	HTTPRequestUserKey  = "user"
 	HTTPRequestErrorKey = "error"
+
+	ChannelKey = "channel"
 )
 
 var (
@@ -90,9 +93,8 @@ func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Message = entry.Message
 	data.Context = map[string]interface{}{}
 
-	if v, ok := entry.Data["channel"]; ok {
+	if v, ok := entry.Data[ChannelKey]; ok {
 		data.Channel = v.(string)
-		delete(entry.Data, "channel")
 	}
 
 	for k, v := range entry.Data {
@@ -110,6 +112,9 @@ func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 				data.Context["stackTrace"] = st
 			}
 		default:
+			if k == ChannelKey {
+				continue
+			}
 			data.Context[k] = v
 		}
 	}
@@ -152,16 +157,21 @@ type HTTPRequestV1Formatter struct {
 
 // Format implements logrus.Formatter interface
 func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	rv, ok := entry.Data[HTTPRequestReqKey]
+	entryData := logrus.Fields{}
+	for key, val := range entry.Data {
+		entryData[key] = val
+	}
+
+	rv, ok := entryData[HTTPRequestReqKey]
 	if !ok {
 		return nil, errors.New(`require "request"`)
 	}
 
 	req, ok := rv.(*http.Request)
 	if !ok {
-		return nil, errors.New(`"request" type MUST be *http.Request`)
+		return nil, errors.Errorf(`"request" type MUST be *http.Request, got %s`, reflect.TypeOf(rv).String())
 	}
-	delete(entry.Data, HTTPRequestReqKey)
+	delete(entryData, HTTPRequestReqKey)
 
 	data := httpRequestV1Pool.Get().(*HTTPRequestV1Data)
 	data.Service = hf.Service
@@ -175,7 +185,7 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Headers = map[string]string{}
 	data.Get = logrus.Fields{}
 	data.Post = logrus.Fields{}
-	data.Extra = entry.Data
+	data.Extra = entryData
 
 	for k, v := range req.Header {
 		if len(v) > 1 {
