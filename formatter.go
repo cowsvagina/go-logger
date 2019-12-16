@@ -72,6 +72,7 @@ type APPLogsV1Data struct {
 	Level       string                 `json:"level"`
 	Time        string                 `json:"time"`
 	Message     string                 `json:"msg"`
+	Error       map[string]interface{} `json:"error"`
 	Context     map[string]interface{} `json:"ctx,omitempty"`
 }
 
@@ -85,39 +86,34 @@ type APPLogsV1Formatter struct {
 
 // Format implements logrus.Formatter interface
 func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	data := appLogsV1Pool.Get().(*APPLogsV1Data)
-	data.Service = af.Service
-	data.Environment = af.Environment
-	data.Time = entry.Time.Format(af.TimeLayout)
-	data.Level = entry.Level.String()
-	data.Message = entry.Message
-	data.Context = map[string]interface{}{}
-
-	if v, ok := entry.Data[ChannelKey]; ok {
-		data.Channel = v.(string)
-	}
-
+	channel := ""
+	errInfo := logrus.Fields{}
+	context := logrus.Fields{}
 	for k, v := range entry.Data {
-		switch v := v.(type) {
-		case error:
-			if v == nil {
-				break
-			}
-
-			data.Context["error"] = v.Error()
-			if st := stackTrace(v); len(st) > 0 {
-				if len(st) >= MaxStackTrace {
-					st = st[:MaxStackTrace]
-				}
-				data.Context["stackTrace"] = st
-			}
-		default:
-			if k == ChannelKey {
+		switch k {
+		case ChannelKey:
+			channel, _ = v.(string)
+		case logrus.ErrorKey:
+			if appErr, ok := v.(error); ok {
+				errInfo = makeErrInfo(appErr)
 				continue
 			}
-			data.Context[k] = v
+
+			fallthrough
+		default:
+			context[k] = v
 		}
 	}
+
+	data := appLogsV1Pool.Get().(*APPLogsV1Data)
+	data.Time = entry.Time.Format(af.TimeLayout)
+	data.Level = entry.Level.String()
+	data.Service = af.Service
+	data.Channel = channel
+	data.Environment = af.Environment
+	data.Message = entry.Message
+	data.Error = errInfo
+	data.Context = context
 
 	output, err := jsoniter.Marshal(data)
 	if err != nil {
@@ -143,8 +139,8 @@ type HTTPRequestV1Data struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	Get         logrus.Fields     `json:"get,omitempty"`
 	Post        logrus.Fields     `json:"post,omitempty"`
-	Extra       logrus.Fields     `json:"extra,omitempty"`
 	Error       logrus.Fields     `json:"error,omitempty"`
+	Extra       logrus.Fields     `json:"extra,omitempty"`
 }
 
 // HTTPRequestV1Formatter http.request.v1日志格式化
@@ -157,12 +153,7 @@ type HTTPRequestV1Formatter struct {
 
 // Format implements logrus.Formatter interface
 func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	entryData := logrus.Fields{}
-	for key, val := range entry.Data {
-		entryData[key] = val
-	}
-
-	rv, ok := entryData[HTTPRequestReqKey]
+	rv, ok := entry.Data[HTTPRequestReqKey]
 	if !ok {
 		return nil, errors.New(`require "request"`)
 	}
@@ -171,7 +162,27 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	if !ok {
 		return nil, errors.Errorf(`"request" type MUST be *http.Request, got %s`, reflect.TypeOf(rv).String())
 	}
-	delete(entryData, HTTPRequestReqKey)
+
+	uid := ""
+	errInfo := logrus.Fields{}
+	extra := logrus.Fields{}
+	for k, v := range entry.Data {
+		switch k {
+		case HTTPRequestReqKey:
+			continue
+		case HTTPRequestUserKey:
+			uid = fmt.Sprintf("%v", v)
+		case logrus.ErrorKey:
+			if reqErr, ok := v.(error); ok {
+				errInfo = makeErrInfo(reqErr)
+				continue
+			}
+
+			fallthrough
+		default:
+			extra[k] = v
+		}
+	}
 
 	data := httpRequestV1Pool.Get().(*HTTPRequestV1Data)
 	data.Service = hf.Service
@@ -181,11 +192,12 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.IP = strings.Split(req.RemoteAddr, ":")[0]
 	data.Method = req.Method
 	data.Path = req.URL.Path
-	data.User = ""
+	data.User = uid
 	data.Headers = map[string]string{}
 	data.Get = logrus.Fields{}
 	data.Post = logrus.Fields{}
-	data.Extra = entryData
+	data.Extra = extra
+	data.Error = errInfo
 
 	for k, v := range req.Header {
 		if len(v) > 1 {
@@ -211,28 +223,6 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 				data.Post[k] = v
 			} else {
 				data.Post[k] = v[0]
-			}
-		}
-	}
-
-	if v, ok := data.Extra[HTTPRequestUserKey]; ok {
-		data.User = fmt.Sprintf("%v", v)
-		delete(data.Extra, HTTPRequestUserKey)
-	}
-
-	if v, ok := data.Extra[HTTPRequestErrorKey]; ok {
-		delete(data.Extra, HTTPRequestErrorKey)
-		if err, ok := v.(error); ok {
-			var trace []string
-			if st := stackTrace(err); len(st) > 0 {
-				if len(st) >= MaxStackTrace {
-					st = st[:MaxStackTrace]
-				}
-				trace = st
-			}
-			data.Error = logrus.Fields{
-				"msg":   err.Error(),
-				"trace": trace,
 			}
 		}
 	}
@@ -268,4 +258,19 @@ func stackTrace(err error) []string {
 	}
 
 	return emptyStack
+}
+
+func makeErrInfo(err error) logrus.Fields {
+	errInfo := logrus.Fields{}
+	trace := make([]string, 0)
+	if st := stackTrace(err); len(st) > 0 {
+		if len(st) >= MaxStackTrace {
+			st = st[:MaxStackTrace]
+		}
+		trace = st
+	}
+	errInfo["msg"] = err.Error()
+	errInfo["trace"] = trace
+
+	return errInfo
 }

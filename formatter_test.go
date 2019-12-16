@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewFormatter(t *testing.T) {
-	_, err := NewFormatter(Standard("undefined"))
+	_, err := NewFormatter("undefined")
 	if err == nil {
 		t.Fatalf("Test NewFormatter(), Expected=%q, Actual=nil", ErrFormatterNotFound)
 	}
@@ -39,7 +39,47 @@ func TestFormatterOutput(t *testing.T) {
 			Time:    time.Now(),
 			Message: "hello world",
 			Data: logrus.Fields{
-				"foo": "bar",
+				"foo":           "bar",
+				"channel":       "xxx",
+				logrus.ErrorKey: errors.New("e"),
+			},
+		}
+
+		cases := []struct {
+			path     []interface{}
+			expected string
+		}{
+			{
+				path:     []interface{}{"schema"},
+				expected: string(APPLogsV1),
+			},
+			{
+				path:     []interface{}{"channel"},
+				expected: "xxx",
+			},
+			{
+				path:     []interface{}{"level"},
+				expected: "info",
+			},
+			{
+				path:     []interface{}{"msg"},
+				expected: "hello world",
+			},
+			{
+				path:     []interface{}{"ctx", "foo"},
+				expected: "bar",
+			},
+			{ // channel应该被format为一个单独的字段
+				path:     []interface{}{"ctx", "channel"},
+				expected: "",
+			},
+			{
+				path:     []interface{}{"error", "msg"},
+				expected: "e",
+			},
+			{
+				path:     []interface{}{"error", "trace"},
+				expected: "[]",
 			},
 		}
 
@@ -48,14 +88,20 @@ func TestFormatterOutput(t *testing.T) {
 			t.Fatalf("Format() error, Expected=nil, Actual=%q", err.Error())
 		}
 
-		if v := jsoniter.Get(data, "schema").ToString(); v == "" {
-			t.Fatalf(`Format() output "schema", Expected=%q, Actual=%q`, APPLogsV1, v)
-		} else if v := jsoniter.Get(data, "level").ToString(); v != entry.Level.String() {
-			t.Fatalf(`Format() output "level", Expected=%q, Actual=%q`, entry.Level.String(), v)
-		} else if v := jsoniter.Get(data, "msg").ToString(); v != entry.Message {
-			t.Fatalf(`Format() output "msg", Expected=%q, Actual=%q`, entry.Message, v)
-		} else if v := jsoniter.Get(data, "ctx", "foo").ToString(); v != "bar" {
-			t.Fatalf(`Format() output "ctx.foo", Expected=%q, Actual=%q`, "bar", v)
+		// 两次Format是为了校验Format的幂等性
+		data1, err := f.Format(entry)
+		if err != nil {
+			t.Fatalf("Format() error, Expected=nil, Actual=%q", err.Error())
+		}
+
+		for _, c := range cases {
+			if v := jsoniter.Get(data, c.path...).ToString(); v != c.expected {
+				t.Fatalf(`Format() output %q, Expecteded=%q, Actual=%q`, c.path, c.expected, v)
+			}
+
+			if v := jsoniter.Get(data1, c.path...).ToString(); v != c.expected {
+				t.Fatalf(`Format() output %q, Expecteded=%q, Actual=%q`, c.path, c.expected, v)
+			}
 		}
 	})
 
@@ -101,11 +147,7 @@ func TestFormatterOutput(t *testing.T) {
 		entry.Data[HTTPRequestUserKey] = 65535
 		entry.Data[HTTPRequestErrorKey] = errors.New("err")
 		entry.Data["status"] = http.StatusAccepted
-
-		data, err := f.Format(entry)
-		if err != nil {
-			t.Fatalf("Format() error, Expected=nil, Actual=%q", err.Error())
-		}
+		entry.Data[logrus.ErrorKey] = errors.New("ee")
 
 		cases := []struct {
 			path     []interface{}
@@ -149,12 +191,31 @@ func TestFormatterOutput(t *testing.T) {
 			},
 			{
 				path:     []interface{}{"error", "msg"},
-				expected: fmt.Sprintf("err"),
+				expected: fmt.Sprintf("ee"),
+			},
+			{
+				path:     []interface{}{"error", "trace"},
+				expected: fmt.Sprintf("[]"),
 			},
 		}
 
+		data, err := f.Format(entry)
+		if err != nil {
+			t.Fatalf("Format() error, Expected=nil, Actual=%q", err.Error())
+		}
+
+		// 两次Format是为了校验Format的幂等性
+		data1, err := f.Format(entry)
+		if err != nil {
+			t.Fatalf("Format() error, Expected=nil, Actual=%q", err.Error())
+		}
+
 		for _, c := range cases {
-			if v := jsoniter.Get(data, (c.path)...).ToString(); v != c.expected {
+			if v := jsoniter.Get(data, c.path...).ToString(); v != c.expected {
+				t.Fatalf(`Format() output %q, Expecteded=%q, Actual=%q`, c.path, c.expected, v)
+			}
+
+			if v := jsoniter.Get(data1, c.path...).ToString(); v != c.expected {
 				t.Fatalf(`Format() output %q, Expecteded=%q, Actual=%q`, c.path, c.expected, v)
 			}
 		}
