@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	HTTPRequestReqKey   = "request"
-	HTTPRequestUserKey  = "user"
-	HTTPRequestErrorKey = "error"
+	HTTPRequestReqKey  = "request"
+	HTTPRequestUserKey = "user"
 
 	ChannelKey = "channel"
 )
@@ -72,7 +71,6 @@ type APPLogsV1Data struct {
 	Level       string                 `json:"level"`
 	Time        string                 `json:"time"`
 	Message     string                 `json:"msg"`
-	Error       map[string]interface{} `json:"error"`
 	Context     map[string]interface{} `json:"ctx,omitempty"`
 }
 
@@ -87,20 +85,16 @@ type APPLogsV1Formatter struct {
 // Format implements logrus.Formatter interface
 func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	channel := ""
-	errInfo := logrus.Fields{}
 	context := logrus.Fields{}
 	for k, v := range entry.Data {
 		switch k {
 		case ChannelKey:
 			channel, _ = v.(string)
-		case logrus.ErrorKey:
-			if appErr, ok := v.(error); ok {
-				errInfo = makeErrInfo(appErr)
+		default:
+			if err, ok := v.(error); ok {
+				context[k] = makeErrInfo(err)
 				continue
 			}
-
-			fallthrough
-		default:
 			context[k] = v
 		}
 	}
@@ -112,7 +106,6 @@ func (af *APPLogsV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Channel = channel
 	data.Environment = af.Environment
 	data.Message = entry.Message
-	data.Error = errInfo
 	data.Context = context
 
 	output, err := jsoniter.Marshal(data)
@@ -139,7 +132,6 @@ type HTTPRequestV1Data struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	Get         logrus.Fields     `json:"get,omitempty"`
 	Post        logrus.Fields     `json:"post,omitempty"`
-	Error       logrus.Fields     `json:"error,omitempty"`
 	Extra       logrus.Fields     `json:"extra,omitempty"`
 }
 
@@ -164,7 +156,6 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	}
 
 	uid := ""
-	errInfo := logrus.Fields{}
 	extra := logrus.Fields{}
 	for k, v := range entry.Data {
 		switch k {
@@ -172,14 +163,11 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 			continue
 		case HTTPRequestUserKey:
 			uid = fmt.Sprintf("%v", v)
-		case logrus.ErrorKey:
-			if reqErr, ok := v.(error); ok {
-				errInfo = makeErrInfo(reqErr)
+		default:
+			if err, ok := v.(error); ok {
+				extra[k] = makeErrInfo(err)
 				continue
 			}
-
-			fallthrough
-		default:
 			extra[k] = v
 		}
 	}
@@ -197,7 +185,6 @@ func (hf *HTTPRequestV1Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	data.Get = logrus.Fields{}
 	data.Post = logrus.Fields{}
 	data.Extra = extra
-	data.Error = errInfo
 
 	for k, v := range req.Header {
 		if len(v) > 1 {

@@ -74,11 +74,11 @@ func TestFormatterOutput(t *testing.T) {
 				expected: "",
 			},
 			{
-				path:     []interface{}{"error", "msg"},
+				path:     []interface{}{"ctx", logrus.ErrorKey, "msg"},
 				expected: "e",
 			},
 			{
-				path:     []interface{}{"error", "trace"},
+				path:     []interface{}{"ctx", logrus.ErrorKey, "trace"},
 				expected: "[]",
 			},
 		}
@@ -145,7 +145,6 @@ func TestFormatterOutput(t *testing.T) {
 
 		entry.Data[HTTPRequestReqKey] = req
 		entry.Data[HTTPRequestUserKey] = 65535
-		entry.Data[HTTPRequestErrorKey] = errors.New("err")
 		entry.Data["status"] = http.StatusAccepted
 		entry.Data[logrus.ErrorKey] = errors.New("ee")
 
@@ -190,12 +189,12 @@ func TestFormatterOutput(t *testing.T) {
 				expected: fmt.Sprintf("%d", http.StatusAccepted),
 			},
 			{
-				path:     []interface{}{"error", "msg"},
-				expected: fmt.Sprintf("ee"),
+				path:     []interface{}{"extra", logrus.ErrorKey, "msg"},
+				expected: "ee",
 			},
 			{
-				path:     []interface{}{"error", "trace"},
-				expected: fmt.Sprintf("[]"),
+				path:     []interface{}{"extra", logrus.ErrorKey, "trace"},
+				expected: "[]",
 			},
 		}
 
